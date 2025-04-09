@@ -83,18 +83,20 @@ async def input_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ODO_END
 
     params = {
-        "api_key": ORS_API_KEY,
-        "text": text,
-        "boundary.rect": [44.0, 48.4, 45.5, 49.5],
-        "size": 1
+        "apikey": "0a947709-13f1-4dee-9ce9-74ea971cffb0",
+        "geocode": text,
+        "format": "json",
+        "results": 1
     }
-    response = requests.get(GEOCODE_URL, params=params)
+    response = requests.get("https://geocode-maps.yandex.ru/1.x/", params=params)
     result = response.json()
     if not result.get("features"):
         await update.message.reply_text("Адрес не найден. Повторите:")
         return ROUTE_INPUT
 
-    addr = result["features"][0]
+    pos = result["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["Point"]["pos"]
+    coords = [float(pos.split()[0]), float(pos.split()[1])]
+    formatted = result["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["metaDataProperty"]["GeocoderMetaData"]["text"]
     formatted = addr["properties"]["label"]
     coords = addr["geometry"]["coordinates"]
     context.user_data["candidate"] = {"label": formatted, "coords": coords}
