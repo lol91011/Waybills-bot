@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 import datetime
 
@@ -6,16 +6,23 @@ import datetime
 DATE, DRIVER, CAR_MAKE, CAR_PLATE, ROUTES, ODO_START, ODO_END, FUEL_START, FUEL_END, FUEL_NORM = range(10)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Я помогу тебе сформировать путевой лист. Введи дату (ГГГГ-ММ-ДД):")
+    await update.message.reply_text("Привет! Я помогу тебе сформировать путевой лист. Введи дату (ГГГГ-ММ-ДД):")
     return DATE
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("""Команды:
-/start — начать создание путевого листа
-/help — показать это сообщение помощи
-/report — начать новый отчет
-/history — получить путевые листы за период""")
+    await update.message.reply_text(
+        "Команды:
+"
+        "/start — начать создание путевого листа
+"
+        "/help — помощь
+"
+        "/report — сформировать отчёт
+"
+        "/history — путевые листы за период
+"
+        "/cancel — отмена действия"
+    )
 
 async def date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["date"] = update.message.text
@@ -72,12 +79,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 if __name__ == "__main__":
-    import os
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    TOKEN = os.getenv("TOKEN")
-
+    TOKEN = "8066885623:AAH4DKVqNfqx5OSRwT4LZL9Io_CzG2RgaqI"
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
