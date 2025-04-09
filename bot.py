@@ -1,6 +1,5 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-import datetime
 
 # Состояния
 DATE, DRIVER, CAR_MAKE, CAR_PLATE, ROUTES, ODO_START, ODO_END, FUEL_START, FUEL_END, FUEL_NORM = range(10)
@@ -11,16 +10,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Команды:
-"
-        "/start — начать создание путевого листа
-"
-        "/help — помощь
-"
-        "/report — сформировать отчёт
-"
-        "/history — путевые листы за период
-"
+        "Команды:\n"
+        "/start — начать создание путевого листа\n"
+        "/help — помощь\n"
+        "/report — сформировать отчёт\n"
+        "/history — путевые листы за период\n"
         "/cancel — отмена действия"
     )
 
@@ -101,5 +95,4 @@ if __name__ == "__main__":
 
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("help", help_command))
-
     app.run_polling()
