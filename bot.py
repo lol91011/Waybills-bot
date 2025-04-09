@@ -85,7 +85,7 @@ async def input_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     params = {
         "api_key": ORS_API_KEY,
         "text": text,
-        "boundary.country": "RU",
+        "boundary.rect": [44.0, 48.4, 45.5, 49.5],
         "size": 1
     }
     response = requests.get(GEOCODE_URL, params=params)
@@ -111,7 +111,7 @@ async def confirm_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sessions[user_id]["routes"].append(addr["label"])
     sessions[user_id]["coords"].append(addr["coords"])
 
-    if len(sessions[user_id]["coords"]) >= 2:
+    if len(sessions[user_id]["coords"]) % 2 == 0:
         body = {"coordinates": sessions[user_id]["coords"][-2:]}
         headers = {"Authorization": ORS_API_KEY, "Content-Type": "application/json"}
         r = requests.post(ROUTE_URL, json=body, headers=headers)
