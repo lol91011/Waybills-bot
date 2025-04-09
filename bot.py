@@ -1,54 +1,103 @@
-import logging
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message
-from aiogram.utils import executor
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
-import os
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+import datetime
 
-API_TOKEN = os.getenv("TELEGRAM_API_TOKEN", "your_token_here")
+# Состояния
+DATE, DRIVER, CAR_MAKE, CAR_PLATE, ROUTES, ODO_START, ODO_END, FUEL_START, FUEL_END, FUEL_NORM = range(10)
 
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Привет! Я помогу тебе сформировать путевой лист. Введи дату (ГГГГ-ММ-ДД):")
+    return DATE
 
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: Message):
-    await message.reply("Добро пожаловать! Введите /help, чтобы узнать доступные команды.")
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("""Команды:
+/start — начать создание путевого листа
+/help — показать это сообщение помощи
+/report — начать новый отчет
+/history — получить путевые листы за период""")
 
-@dp.message_handler(commands=['help'])
-async def cmd_help(message: Message):
-    await message.reply_text(
-        "Команды:
-"
-        "/start — начать работу с ботом
-"
-        "/help — помощь по использованию
-"
-        "/add — добавить новый путевой лист
-"
-        "/list — список путевых листов
-"
-        "/export — экспортировать в PDF
-"
-        "/report — отчёт за период"
+async def date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["date"] = update.message.text
+    await update.message.reply_text("Введите ФИО водителя:")
+    return DRIVER
+
+async def driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["driver"] = update.message.text
+    await update.message.reply_text("Введите марку автомобиля:")
+    return CAR_MAKE
+
+async def car_make(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["car_make"] = update.message.text
+    await update.message.reply_text("Введите госномер автомобиля:")
+    return CAR_PLATE
+
+async def car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["car_plate"] = update.message.text
+    await update.message.reply_text("Введите маршрут (откуда — куда):")
+    return ROUTES
+
+async def routes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["routes"] = update.message.text
+    await update.message.reply_text("Введите начальный пробег:")
+    return ODO_START
+
+async def odo_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["odo_start"] = update.message.text
+    await update.message.reply_text("Введите конечный пробег:")
+    return ODO_END
+
+async def odo_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["odo_end"] = update.message.text
+    await update.message.reply_text("Введите остаток топлива при выезде:")
+    return FUEL_START
+
+async def fuel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["fuel_start"] = update.message.text
+    await update.message.reply_text("Введите остаток топлива при возвращении:")
+    return FUEL_END
+
+async def fuel_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["fuel_end"] = update.message.text
+    await update.message.reply_text("Введите расход по норме (л/100км):")
+    return FUEL_NORM
+
+async def fuel_norm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["fuel_norm"] = update.message.text
+    await update.message.reply_text("Путевой лист сформирован. Спасибо!")
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Операция отменена.")
+    return ConversationHandler.END
+
+if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    TOKEN = os.getenv("TOKEN")
+
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, date)],
+            DRIVER: [MessageHandler(filters.TEXT & ~filters.COMMAND, driver)],
+            CAR_MAKE: [MessageHandler(filters.TEXT & ~filters.COMMAND, car_make)],
+            CAR_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, car_plate)],
+            ROUTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, routes)],
+            ODO_START: [MessageHandler(filters.TEXT & ~filters.COMMAND, odo_start)],
+            ODO_END: [MessageHandler(filters.TEXT & ~filters.COMMAND, odo_end)],
+            FUEL_START: [MessageHandler(filters.TEXT & ~filters.COMMAND, fuel_start)],
+            FUEL_END: [MessageHandler(filters.TEXT & ~filters.COMMAND, fuel_end)],
+            FUEL_NORM: [MessageHandler(filters.TEXT & ~filters.COMMAND, fuel_norm)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-@dp.message_handler(commands=['add'])
-async def cmd_add(message: Message):
-    await message.reply("Добавление путевого листа пока в разработке.")
+    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("help", help_command))
 
-@dp.message_handler(commands=['list'])
-async def cmd_list(message: Message):
-    await message.reply("Список путевых листов пока пуст.")
-
-@dp.message_handler(commands=['export'])
-async def cmd_export(message: Message):
-    await message.reply("Экспорт в PDF в процессе разработки.")
-
-@dp.message_handler(commands=['report'])
-async def cmd_report(message: Message):
-    await message.reply("Введите период отчета (например, 01.01.2024 - 31.01.2024).")
-
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    app.run_polling()
