@@ -7,7 +7,7 @@ from openpyxl.worksheet.properties import WorksheetProperties, PageSetupProperti
 import datetime
 
 # --- Константы состояний ---
-DATE, DRIVER, CAR_MAKE, CAR_PLATE, ROUTES, ODO_START, ODO_END, FUEL_START, FUEL_END, FUEL_NORM = range(11)
+DATE, DRIVER, CAR_MAKE, CAR_PLATE, ROUTES, ODO_START, ODO_END, FUEL_START, FUEL_END, FUEL_NORM = range(10)
 
 # --- Сессии пользователей ---
 sessions = {}
