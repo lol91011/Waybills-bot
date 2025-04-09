@@ -126,7 +126,7 @@ async def get_fuel_norm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 def main():
-    app = ApplicationBuilder().token("BOT_TOKEN").build()
+    app = ApplicationBuilder().token("8066885623:AAH4DKVqNfqx5OSRwT4LZL9Io_CzG2RgaqI").build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
