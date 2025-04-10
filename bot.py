@@ -201,9 +201,6 @@ def main():
                 MessageHandler(filters.Regex("^(да|нет)$"), confirm_address),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ask_route)
             ],
-                MessageHandler(filters.Regex("^(да|нет)$"), confirm_address),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_route)
-            ],
             ASK_END_ODOMETER: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirmation)],
         },
         fallbacks=[]
