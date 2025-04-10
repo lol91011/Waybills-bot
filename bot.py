@@ -171,6 +171,13 @@ async def confirm_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'route_text' not in context.user_data:
                 context.user_data['route_text'] = ''
             context.user_data['route_text'] += f"{points[-1][0]} → {name}: {dist_rounded} км ({dist} км)\n"
+        if 'parsed_routes' not in context.user_data:
+            context.user_data['parsed_routes'] = []
+        context.user_data['parsed_routes'].append({
+            'from': points[-1][0],
+            'to': name,
+            'rounded_km': dist_rounded
+        })
         points.append((name, coords))
         await update.message.reply_text("Добавьте следующий адрес или напишите 'готово'")
         return ASK_ROUTE
