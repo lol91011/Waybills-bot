@@ -108,11 +108,21 @@ async def ask_fuel_before_trip(update: Update, context: ContextTypes.DEFAULT_TYP
     return ASK_FUEL_BEFORE_TRIP
 
 async def ask_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["fuel_before"] = update.message.text
     user_id = update.effective_user.id
-    await update.message.reply_text("Введите маршрут:", reply_markup=get_address_keyboard(user_id))
-    return ASK_ROUTE
-
+    context.user_data.setdefault('route_points', [])
+    msg = update.message.text.strip()
+    if msg.lower() == 'готово':
+        context.user_data['route'] = context.user_data.get('route_text', '')
+        return await ask_end_odometer(update, context)
+    name, coords = await geocode_yandex(msg)
+    if name:
+        context.user_data['last_address'] = name
+        context.user_data['last_coords'] = coords
+        await update.message.reply_text(f"Подтвердите адрес: {name}? (да/нет)")
+        return ASK_ROUTE
+    else:
+        await update.message.reply_text("Адрес не найден. Попробуйте снова.")
+        return ASK_ROUTE
 async def ask_end_odometer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["route"] = update.message.text
     user_id = update.effective_user.id
@@ -181,6 +191,9 @@ def main():
             ASK_FUEL_CONSUMPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_fuel_before_trip)],
             ASK_FUEL_BEFORE_TRIP: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_route)],
             ASK_ROUTE: [
+                MessageHandler(filters.Regex("^(да|нет)$"), confirm_address),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_route)
+            ],
                 MessageHandler(filters.Regex("^(да|нет)$"), confirm_address),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ask_route)
             ],
