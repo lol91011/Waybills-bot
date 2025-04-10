@@ -130,10 +130,10 @@ async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary += f"Начальный пробег: {context.user_data['start_odometer']}\n"
     summary += f"Средний расход: {context.user_data['consumption']}\n"
     summary += f"Топливо до выезда: {context.user_data['fuel_before']}\n"
-    summary += f"Маршрут: {context.user_data['route']}\n"
+    summary += f"Маршрут: {context.user_data.get('route_text', '')}\n"
     summary += f"Конечный пробег: {context.user_data['end_odometer']}"
     await update.message.reply_text(summary)
-filename = generate_waybill_excel(user_id, {
+    filename = generate_waybill_excel(user_id, {
         "name": user_data_store[user_id]["name"],
         "car": user_data_store[user_id]["car"],
         "start_odometer": context.user_data["start_odometer"],
@@ -141,7 +141,7 @@ filename = generate_waybill_excel(user_id, {
         "fuel_before": context.user_data["fuel_before"],
         "consumption": context.user_data["consumption"],
         "parsed_routes": context.user_data.get("parsed_routes", [])
-        })
+    })
     with open(filename, "rb") as doc:
         await update.message.reply_document(doc, filename=filename)
     return ConversationHandler.END
