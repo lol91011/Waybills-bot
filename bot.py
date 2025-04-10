@@ -71,7 +71,13 @@ async def ask_fuel_norm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return FUEL_START
 
 async def ask_fuel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Введите адрес. Первый адрес — точка старта. Напишите 'готово', когда закончите.")
+    keyboard = ReplyKeyboardMarkup([
+        ["Туркменская 14а"],
+        ["Готово"]
+    ], resize_keyboard=True)
+    await update.message.reply_text(
+        "Введите адрес. Первый адрес — точка старта. Напишите \"Готово\", когда закончите.",
+        reply_markup=keyboard)
     return ROUTE_INPUT
 
 async def input_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,9 +103,6 @@ async def input_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pos = result["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["Point"]["pos"]
     coords = [float(pos.split()[0]), float(pos.split()[1])]
     formatted = result["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["metaDataProperty"]["GeocoderMetaData"]["text"]
-    formatted = addr["properties"]["label"]
-    coords = addr["geometry"]["coordinates"]
-    context.user_data["candidate"] = {"label": formatted, "coords": coords}
     await update.message.reply_text(f"Подтвердите адрес: {formatted} (да/нет)")
     return ROUTE_CONFIRM
 
@@ -110,21 +113,14 @@ async def confirm_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ROUTE_INPUT
 
     addr = context.user_data["candidate"]
-    sessions[user_id]["routes"].append(addr["label"])
     sessions[user_id]["coords"].append(addr["coords"])
 
     if len(sessions[user_id]["coords"]) % 2 == 0:
-        body = {"coordinates": sessions[user_id]["coords"][-2:]}
         headers = {"Authorization": ORS_API_KEY, "Content-Type": "application/json"}
         r = requests.post(ROUTE_URL, json=body, headers=headers)
         meters = r.json()["features"][0]["properties"]["segments"][0]["distance"]
         km = round(meters / 1000, 1)
         km_rounded = round(km / 10) * 10
-        await update.message.reply_text(
-        await update.message.reply_text(
-            f"{sessions[user_id]['routes'][-2]} → {sessions[user_id]['routes'][-1]}\nРасстояние: {km_rounded} км ({km} км точно)"
-        )
-        )
 async def ask_odo_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sessions[str(update.effective_user.id)]["odo_end"] = update.message.text
     await update.message.reply_text("✅ Все данные собраны. В дальнейшем будет Excel и PDF.")
