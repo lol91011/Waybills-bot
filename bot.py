@@ -1,6 +1,9 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Добро пожаловать! Введите дату или нажмите 'Сегодня'.")
+    return ASK_DATE
 import os
 from collections import defaultdict
 
