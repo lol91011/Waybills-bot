@@ -103,7 +103,7 @@ async def ask_fuel_consumption(update: Update, context: ContextTypes.DEFAULT_TYP
     return ASK_FUEL_CONSUMPTION
 
 async def ask_fuel_before_trip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["consumption"] = update.message.text
+    context.user_data["fuel_before"] = update.message.text
     await update.message.reply_text("Введите количество топлива до выезда:")
     return ASK_FUEL_BEFORE_TRIP
 
@@ -146,25 +146,6 @@ async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(doc, filename=filename)
     return ConversationHandler.END
 
-
-async def ask_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.setdefault('route_points', [])
-    user_id = update.effective_user.id
-    msg = update.message.text
-    if msg.lower() == 'готово':
-        context.user_data['route'] = context.user_data.get('route_text', '')
-        return await ask_end_odometer(update, context)
-    name, coords = await geocode_yandex(msg)
-    if name:
-        context.user_data['last_address'] = msg
-        context.user_data['last_coords'] = coords
-        await update.message.reply_text(
-            f"Подтвердите адрес: {name}? (да/нет)"
-        )
-        return ASK_ROUTE
-    else:
-        await update.message.reply_text("Адрес не найден. Введите снова:")
-        return ASK_ROUTE
 
 async def confirm_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
