@@ -244,3 +244,47 @@ def generate_waybill_excel(user_id, user_data):
 
     wb.save(output_filename)
     return output_filename
+async def ask_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    context.user_data.setdefault('route_points', [])
+    msg = update.message.text.strip()
+    if msg.lower() == 'готово':
+        context.user_data['route'] = context.user_data.get('route_text', '')
+        return await ask_end_odometer(update, context)
+    name, coords = await geocode_yandex(msg)
+    if name:
+        context.user_data['last_address'] = name
+        context.user_data['last_coords'] = coords
+        await update.message.reply_text(f"Подтвердите адрес: {name}? (да/нет)")
+        return ASK_ROUTE
+    else:
+        await update.message.reply_text("Адрес не найден. Попробуйте снова.")
+        return ASK_ROUTE
+
+async def confirm_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.lower()
+    if text == 'да':
+        name = context.user_data['last_address']
+        coords = context.user_data['last_coords']
+        points = context.user_data['route_points']
+        if points:
+            prev_coords = points[-1][1]
+            dist = await get_distance_ors(prev_coords, coords)
+            dist_rounded = int(round(dist / 10.0) * 10)
+            if 'route_text' not in context.user_data:
+                context.user_data['route_text'] = ''
+            context.user_data['route_text'] += f"{points[-1][0]} → {name}: {dist_rounded} км ({dist} км)\n"
+            if 'parsed_routes' not in context.user_data:
+                context.user_data['parsed_routes'] = []
+            context.user_data['parsed_routes'].append({
+                'from': points[-1][0],
+                'to': name,
+                'rounded_km': dist_rounded
+            })
+        points.append((name, coords))
+        await update.message.reply_text("Добавьте следующий адрес или напишите 'готово'")
+        return ASK_ROUTE
+    else:
+        await update.message.reply_text("Введите адрес снова:")
+        return ASK_ROUTE
