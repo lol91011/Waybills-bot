@@ -9,6 +9,8 @@ from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+(ASK_DATE, ASK_NAME, ASK_CAR, ASK_START_ODOMETER, ASK_FUEL_CONSUMPTION,
+ ASK_FUEL_BEFORE_TRIP, ASK_ROUTE, ASK_END_ODOMETER, CONFIRMATION) = range(9)
 
 # Этапы разговора
 def main():
