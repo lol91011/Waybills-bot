@@ -168,8 +168,8 @@ async def geocode_address(address: str) -> tuple:
         logger.error(f"Ошибка геокодирования: {e}")
         return None, None, "Ошибка при поиске адреса"
 
-async def calculate_segment_distance(start_coords: list, end_coords: list, total_distance: int, remaining_distance: int) -> float:
-    """Расчет расстояния по дорогам с учетом фактического пробега и кратности 10 км"""
+async def calculate_exact_distance(start_coords: list, end_coords: list) -> float:
+    """Расчет точного расстояния по дорогам"""
     try:
         headers = {"Authorization": ORS_API_KEY}
         params = {
@@ -186,32 +186,43 @@ async def calculate_segment_distance(start_coords: list, end_coords: list, total
         response.raise_for_status()
         data = response.json()
         
-        # Получаем расчетное расстояние
-        calculated_distance = data["features"][0]["properties"]["segments"][0]["distance"] / 1000
-        
-        # Если это последний отрезок, используем оставшееся расстояние
-        if remaining_distance > 0:
-            return remaining_distance
-        
-        # Округляем до ближайших 10 км
-        rounded_distance = math.ceil(calculated_distance / 10) * 10
-        
-        # Не превышаем общее расстояние
-        if rounded_distance > total_distance:
-            return total_distance
-        
-        return rounded_distance
+        return data["features"][0]["properties"]["segments"][0]["distance"] / 1000
         
     except Exception as e:
         logger.error(f"Ошибка расчета расстояния: {e}")
         # При ошибке API используем упрощенный расчет
         simplified_dist = math.sqrt((end_coords[0]-start_coords[0])**2 + (end_coords[1]-start_coords[1])**2) * 111
-        rounded_distance = math.ceil(simplified_dist / 10) * 10
-        
-        if remaining_distance > 0:
-            return remaining_distance
+        return simplified_dist
+
+def adjust_segments(exact_segments: list, total_actual_distance: int) -> list:
+    """Подгоняет отрезки так, чтобы каждый был кратен 10 км с сохранением пропорций"""
+    # Рассчитываем суммарное точное расстояние
+    total_exact_distance = sum(exact_segments)
+    
+    # Рассчитываем коэффициенты для каждого отрезка
+    coefficients = [seg / total_exact_distance for seg in exact_segments]
+    
+    # Распределяем общее расстояние с учетом кратности 10 км
+    remaining_distance = total_actual_distance
+    adjusted_segments = []
+    
+    for i, coeff in enumerate(coefficients):
+        if i == len(coefficients) - 1:
+            # Для последнего отрезка используем оставшееся расстояние
+            adjusted_segments.append(remaining_distance)
+        else:
+            # Рассчитываем предполагаемое расстояние для отрезка
+            proposed = round((total_actual_distance * coeff) / 10) * 10
+            proposed = max(10, proposed)  # Минимум 10 км
             
-        return min(rounded_distance, total_distance)
+            # Проверяем, чтобы не превысить оставшееся расстояние
+            if proposed > remaining_distance:
+                proposed = remaining_distance
+            
+            adjusted_segments.append(proposed)
+            remaining_distance -= proposed
+    
+    return adjusted_segments
 
 @dp.message(Command("start", "help"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -375,7 +386,7 @@ async def process_start_mileage(message: types.Message, state: FSMContext):
             return
         
         user_data[user_id]['start_mileage'] = int(message.text)
-        user_data[user_id]['route'] = {'points': [], 'segments': [], 'total_distance': 0}
+        user_data[user_id]['route'] = {'points': [], 'exact_segments': [], 'adjusted_segments': [], 'total_distance': 0}
         
         start_point = user_data[user_id].get('next_start_point', None)
         prompt = "📍 Введите первый адрес маршрута (точка отправления):\n"
@@ -418,7 +429,7 @@ async def process_route_address(message: types.Message, state: FSMContext):
             
             await state.set_state(Form.fuel_consumption)
             await message.answer(
-                f"🛣️ Маршрут построен. Общее расстояние: {user_data[user_id]['route']['total_distance']} км\n"
+                f"🛣️ Маршрут построен. Точное расстояние: {sum(user_data[user_id]['route']['exact_segments']):.1f} км\n"
                 "⛽ Введите средний расход топлива на 100 км (л):",
                 reply_markup=ReplyKeyboardRemove()
             )
@@ -477,14 +488,13 @@ async def process_confirm_address(message: types.Message, state: FSMContext):
             )
         else:
             prev_coords = route['points'][-2]['coords']
-            segment_distance = await calculate_segment_distance(prev_coords, coords, 0, 0)
-            route['segments'].append(segment_distance)
-            route['total_distance'] += segment_distance
+            exact_distance = await calculate_exact_distance(prev_coords, coords)
+            route['exact_segments'].append(exact_distance)
             
             await message.answer(
                 f"📍 Адрес добавлен: {shorten_address(address)}\n"
-                f"🛣️ Расстояние: {segment_distance} км\n"
-                f"📊 Общее расстояние: {route['total_distance']} км\n"
+                f"🛣️ Точное расстояние: {exact_distance:.1f} км\n"
+                f"📊 Суммарное точное расстояние: {sum(route['exact_segments']):.1f} км\n"
                 "📍 Введите следующий адрес или /готово:",
                 reply_markup=make_done_keyboard()
             )
@@ -539,41 +549,19 @@ async def process_end_mileage(message: types.Message, state: FSMContext):
             return
         
         actual_distance = end_mileage - start_mileage
-        calculated_distance = user_data[user_id]['route']['total_distance']
+        exact_distance = sum(user_data[user_id]['route']['exact_segments'])
         fuel_per_100km = user_data[user_id]['fuel_per_100km']
         start_fuel = user_data[user_id]['start_fuel']
         
-        # Сохраняем фактическое расстояние для корректировки отрезков
-        user_data[user_id]['actual_distance'] = actual_distance
-        user_data[user_id]['remaining_distance'] = actual_distance
+        # Подгоняем отрезки под фактический пробег с кратностью 10 км
+        adjusted_segments = adjust_segments(
+            user_data[user_id]['route']['exact_segments'],
+            actual_distance
+        )
         
-        if actual_distance != calculated_distance:
-            # Пересчитываем отрезки с учетом фактического расстояния
-            route = user_data[user_id]['route']
-            route['total_distance'] = 0
-            route['segments'] = []
-            
-            # Пересчитываем все отрезки кроме последнего
-            for i in range(1, len(route['points'])):
-                prev_coords = route['points'][i-1]['coords']
-                curr_coords = route['points'][i]['coords']
-                
-                # Для последнего отрезка используем оставшееся расстояние
-                remaining = actual_distance - route['total_distance'] if i == len(route['points'])-1 else 0
-                
-                segment_distance = await calculate_segment_distance(
-                    prev_coords,
-                    curr_coords,
-                    actual_distance,
-                    remaining
-                )
-                
-                route['segments'].append(segment_distance)
-                route['total_distance'] += segment_distance
-            
-            user_data[user_id]['distance_correction'] = f"Корректировка: {actual_distance} км"
-        else:
-            user_data[user_id]['distance_correction'] = "Без корректировки"
+        user_data[user_id]['route']['adjusted_segments'] = adjusted_segments
+        user_data[user_id]['route']['total_distance'] = sum(adjusted_segments)
+        user_data[user_id]['actual_distance'] = actual_distance
         
         fuel_used = (actual_distance * fuel_per_100km) / 100
         end_fuel = start_fuel - fuel_used
@@ -588,12 +576,13 @@ async def process_end_mileage(message: types.Message, state: FSMContext):
         
         route_text = "🛣️ *Маршрут:*\n"
         points = user_data[user_id]['route']['points']
-        segments = user_data[user_id]['route']['segments']
+        exact_segments = user_data[user_id]['route']['exact_segments']
+        adjusted_segments = user_data[user_id]['route']['adjusted_segments']
         
         for i in range(1, len(points)):
             from_addr = shorten_address(points[i-1]['address'])
             to_addr = shorten_address(points[i]['address'])
-            route_text += f"{i}. {from_addr} → {to_addr} ({segments[i-1]} км)\n"
+            route_text += f"{i}. {from_addr} → {to_addr} ({adjusted_segments[i-1]} км, точное: {exact_segments[i-1]:.1f} км)\n"
         
         fuel_warning = ""
         if end_fuel < 0:
@@ -700,12 +689,13 @@ async def show_report_confirmation(message: types.Message, user_id: str):
         
         route_text = "🛣️ *Маршрут:*\n"
         points = route['points']
-        segments = route['segments']
+        exact_segments = route['exact_segments']
+        adjusted_segments = route['adjusted_segments']
         
         for i in range(1, len(points)):
             from_addr = shorten_address(points[i-1]['address'])
             to_addr = shorten_address(points[i]['address'])
-            route_text += f"{i}. {from_addr} → {to_addr} ({segments[i-1]} км)\n"
+            route_text += f"{i}. {from_addr} → {to_addr} ({adjusted_segments[i-1]} км, точное: {exact_segments[i-1]:.1f} км)\n"
         
         refill_info = f"\n⛽ Заправлено топлива: {data.get('fuel_refill', 0):.3f} л\n" if 'fuel_refill' in data else ""
         deficit_info = f"\n⛽ Дефицит топлива: {data.get('fuel_deficit', 0):.3f} л\n" if data.get('fuel_deficit', 0) > 0 else ""
@@ -815,7 +805,7 @@ async def generate_report(message: types.Message, user_id: str):
 
             # Маршрут (второй лист)
             total_distance = 0
-            for i, segment in enumerate(data['route']['segments'][:25], start=1):
+            for i, segment in enumerate(data['route']['adjusted_segments'][:25], start=1):
                 row = 5 + i - 1
                 from_addr = shorten_address(data['route']['points'][i-1]['address'])
                 to_addr = shorten_address(data['route']['points'][i]['address'])
