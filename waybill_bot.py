@@ -2,6 +2,9 @@
 import asyncio
 import os
 import math
+import time
+import threading
+import sys
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -13,13 +16,68 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 import openpyxl
 from openpyxl.styles import Alignment
 import requests
+from flask import Flask, jsonify
+
+# Определение среды развертывания
+IS_RAILWAY = os.getenv('RAILWAY_ENVIRONMENT', '').lower() == 'true'
+PORT = int(os.getenv('PORT', 5000))
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log') if not IS_RAILWAY else logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Инициализация Flask приложения для health checks
+app = Flask(__name__)
+
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'ok', 'bot': 'running'})
+
+def run_flask():
+    app.run(host='0.0.0.0', port=PORT)
+
+# Запуск Flask в отдельном потоке
+if IS_RAILWAY:
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+# Список рекламных ключевых слов
+AD_KEYWORDS = [
+    'купить', 'продать', 'скидка', 'акция', 'бесплатно', 
+    'реклама', 'подпишись', 'канал', 'промокод', 'распродажа',
+    'топовый', 'гарантия', 'доставка', 'магазин', 'товар'
+]
+
+# Механизм keep-alive
+def keep_alive():
+    while True:
+        try:
+            # Простое действие для поддержания активности
+            logger.info("Выполняю keep-alive запрос...")
+            bot.get_me()
+            time.sleep(300)  # 5 минут
+        except Exception as e:
+            logger.error(f"Ошибка в keep-alive: {e}")
+            time.sleep(60)
+
+# Фильтр рекламы
+def is_advertisement(text):
+    if not text:
+        return False
+    text = text.lower()
+    return any(keyword in text for keyword in AD_KEYWORDS)
+
+class WaybillStates(StatesGroup):
+    waiting_for_number = State()
+    waiting_for_driver = State()
+    waiting_for_car = State()
 
 # Конфигурация
 API_TOKEN = "8066885623:AAH4DKVqNfqx5OSRwT4LZL9Io_CzG2RgaqI"
@@ -95,7 +153,7 @@ def make_date_keyboard():
 
 def make_fuel_options_keyboard(last_fuel: float):
     builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text=f"Использовать остаток: {last_fuel:.1f} л"))
+    builder.add(KeyboardButton(text=f"Использовать остаток: {last_fuel:.3f} л"))
     builder.add(KeyboardButton(text="Ввести новое значение"))
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)
@@ -259,7 +317,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             )
         await state.set_state(Form.driver_info)
     except Exception as e:
-        logger.error(f"Ошибка в cmd_start: {e}")
+        logger.error(f"Error in cmd_start: {e}")
         await message.answer(
             "⚠ Произошла ошибка. Пожалуйста, попробуйте еще раз.",
             reply_markup=ReplyKeyboardRemove()
@@ -326,7 +384,7 @@ async def process_date(message: types.Message, state: FSMContext):
         last_fuel = user_data[user_id].get('last_fuel', None)
         if last_fuel is not None:
             await message.answer(
-                f"⛽ Остаток топлива с прошлой поездки: {last_fuel:.1f} л",
+                f"⛽ Остаток топлива с прошлой поездки: {last_fuel:.3f} л",
                 reply_markup=make_fuel_options_keyboard(last_fuel)
             )
         else:
@@ -347,11 +405,18 @@ async def process_start_fuel(message: types.Message, state: FSMContext):
         user_id = str(message.from_user.id)
         
         if 'last_fuel' in user_data[user_id]:
-            if message.text == f"Использовать остаток: {user_data[user_id]['last_fuel']:.1f} л":
-                user_data[user_id]['start_fuel'] = user_data[user_id]['last_fuel']
-                await state.set_state(Form.start_mileage)
-                await message.answer("🛣️ Введите начальный пробег (км):", reply_markup=ReplyKeyboardRemove())
-                return
+            if message.text.startswith("Использовать остаток:"):
+                # Извлекаем точное значение из текста кнопки
+                last_fuel_str = message.text.split(":")[1].strip().replace(" л", "")
+                try:
+                    last_fuel = float(last_fuel_str.replace(",", "."))
+                    user_data[user_id]['start_fuel'] = last_fuel
+                    await state.set_state(Form.start_mileage)
+                    await message.answer("🛣️ Введите начальный пробег (км):", reply_markup=ReplyKeyboardRemove())
+                    return
+                except ValueError:
+                    await message.answer("❌ Ошибка при обработке остатка топлива. Введите значение вручную:")
+                    return
             elif message.text == "Ввести новое значение":
                 await message.answer("⛽ Введите начальное количество топлива (л):", reply_markup=ReplyKeyboardRemove())
                 return
@@ -389,15 +454,19 @@ async def process_start_mileage(message: types.Message, state: FSMContext):
         user_data[user_id]['route'] = {'points': [], 'exact_segments': [], 'adjusted_segments': [], 'total_distance': 0}
         
         start_point = user_data[user_id].get('next_start_point', None)
-        prompt = "📍 Введите первый адрес маршрута (точка отправления):\n"
-        
         if start_point:
-            prompt += f"Последняя точка из предыдущей поездки: {start_point}\nИспользовать ее?"
-            await message.answer(prompt, reply_markup=make_yes_no_keyboard())
+            await message.answer(
+                f"📍 Последняя точка из предыдущей поездки: {shorten_address(start_point)}\n"
+                "Использовать ее как точку отправления?",
+                reply_markup=make_yes_no_keyboard()
+            )
+            await state.set_state(Form.route_address)
         else:
-            await message.answer(prompt, reply_markup=ReplyKeyboardRemove())
-        
-        await state.set_state(Form.route_address)
+            await message.answer(
+                "📍 Введите первый адрес маршрута (точка отправления):",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            await state.set_state(Form.route_address)
     except Exception as e:
         logger.error(f"Ошибка в process_start_mileage: {e}")
         await message.answer(
@@ -410,13 +479,33 @@ async def process_route_address(message: types.Message, state: FSMContext):
     """Обработка адресов маршрута"""
     try:
         user_id = str(message.from_user.id)
+        text = message.text.lower()
         
+        # Проверяем, есть ли сохраненная точка и это первый адрес в маршруте
         if 'next_start_point' in user_data[user_id] and len(user_data[user_id]['route']['points']) == 0:
-            if message.text.lower() in ['да', 'yes']:
-                message.text = user_data[user_id]['next_start_point']
-            elif message.text.lower() in ['нет', 'no']:
+            if text in ['да', 'yes']:
+                # Используем сохраненную точку
+                address = user_data[user_id]['next_start_point']
+                # Получаем координаты для сохраненного адреса
+                full_address, coords, error = await geocode_address(address)
+                if error:
+                    await message.answer(f"❌ Ошибка: {error}")
+                    return
+                
+                user_data[user_id]['route']['points'].append({'address': full_address, 'coords': coords})
+                await message.answer(
+                    f"📍 Точка отправления: {shorten_address(full_address)}\n"
+                    "📍 Введите следующий адрес или /готово:",
+                    reply_markup=make_done_keyboard()
+                )
+                await state.set_state(Form.route_address)
+                return
+            elif text in ['нет', 'no']:
                 del user_data[user_id]['next_start_point']
-                await message.answer("📍 Введите новый адрес отправления:", reply_markup=ReplyKeyboardRemove())
+                await message.answer("📍 Введите адрес отправления:", reply_markup=ReplyKeyboardRemove())
+                return
+            else:
+                await message.answer("Пожалуйста, используйте кнопки 'Да' или 'Нет'")
                 return
         
         if message.text == "🏁 /готово":
@@ -425,6 +514,7 @@ async def process_route_address(message: types.Message, state: FSMContext):
                 return
             
             if len(user_data[user_id]['route']['points']) > 0:
+                # Сохраняем последнюю точку для следующей поездки
                 user_data[user_id]['next_start_point'] = user_data[user_id]['route']['points'][-1]['address']
             
             await state.set_state(Form.fuel_consumption)
@@ -435,10 +525,12 @@ async def process_route_address(message: types.Message, state: FSMContext):
             )
             return
         
+        # Обычная обработка ввода адреса
         address, coords, error = await geocode_address(message.text)
         
         if error:
             await message.answer(error)
+            return
         if not address:
             await message.answer("❌ Адрес не найден. Уточните название:")
             return
@@ -907,6 +999,16 @@ async def cmd_debug(message: types.Message):
 @dp.message()
 async def handle_unexpected_messages(message: types.Message):
     """Обработка непредусмотренных сообщений"""
+    # Проверка на рекламу
+    if is_advertisement(message.text):
+        logger.info(f"Обнаружено рекламное сообщение от {message.from_user.id}: {message.text}")
+        try:
+            await message.delete()
+            await message.answer("Реклама запрещена в этом чате.")
+        except Exception as e:
+            logger.error(f"Ошибка при удалении рекламного сообщения: {e}")
+        return
+    
     await message.answer(
         "❌ Я не понимаю это сообщение. Пожалуйста, используйте команды:\n"
         "/start - начать заполнение путевого листа\n"
@@ -921,9 +1023,25 @@ async def on_startup(bot: Bot):
         await bot.delete_webhook(drop_pending_updates=True)
         logger.info("Бот успешно запущен")
         print("🤖 Бот успешно запущен")
+        
+        # Запуск keep-alive потока
+        keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+        keep_alive_thread.start()
+        
+        if IS_RAILWAY:
+            logger.info("Работает в среде Railway")
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
         print(f"🛑 Ошибка при запуске бота: {e}")
+
+async def on_shutdown(bot: Bot):
+    """Действия при остановке бота"""
+    try:
+        logger.info("Завершение работы бота...")
+        await bot.session.close()
+        logger.info("Бот успешно остановлен")
+    except Exception as e:
+        logger.error(f"Ошибка при остановке бота: {e}")
 
 async def main():
     """Запуск бота"""
@@ -937,9 +1055,12 @@ async def main():
         await bot.delete_webhook(drop_pending_updates=True)
         
         # Запускаем поллинг
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, on_startup=on_startup, on_shutdown=on_shutdown)
     except Exception as e:
         logger.critical(f"Ошибка: {e}")
+        # Попытка автоматического перезапуска
+        time.sleep(10)
+        os.execv(sys.executable, ['python'] + sys.argv)
     finally:
         await bot.session.close()
 
@@ -952,3 +1073,6 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Необработанное исключение: {e}")
         print(f"💥 Критическая ошибка: {e}")
+        # Попытка автоматического перезапуска
+        time.sleep(10)
+        os.execv(sys.executable, ['python'] + sys.argv)
