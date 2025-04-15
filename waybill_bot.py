@@ -1043,6 +1043,8 @@ async def on_shutdown(bot: Bot):
     except Exception as e:
         logger.error(f"Ошибка при остановке бота: {e}")
 
+# ... (весь предыдущий код остается без изменений до функции main)
+
 async def main():
     """Запуск бота"""
     try:
@@ -1054,8 +1056,8 @@ async def main():
         # Удаляем вебхук перед запуском
         await bot.delete_webhook(drop_pending_updates=True)
         
-        # Запускаем поллинг
-        await dp.start_polling(bot, on_startup=on_startup, on_shutdown=on_shutdown)
+        # Запускаем поллинг с skip_updates=True
+        await dp.start_polling(bot, on_startup=on_startup, on_shutdown=on_shutdown, skip_updates=True)
     except Exception as e:
         logger.critical(f"Ошибка: {e}")
         # Попытка автоматического перезапуска
