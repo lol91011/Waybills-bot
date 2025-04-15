@@ -1052,14 +1052,27 @@ async def main():
         print("🤖 Бот запускается...")
         print(f"🔍 Проверка шаблона: {TEMPLATE_PATH}")
         print(f"📄 Файл {'найден ✅' if os.path.exists(TEMPLATE_PATH) else 'не найден ❌'}")
-        
-        # Удаляем вебхук перед запуском
-        await bot.delete_webhook(drop_pending_updates=True)
-        
+
+        # Гарантированное удаление вебхука перед запуском
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+            await asyncio.sleep(1)  # Даем время на обработку запроса
+            await bot.delete_webhook(drop_pending_updates=True)  # Двойное удаление для надежности
+        except Exception as e:
+            logger.error(f"Ошибка при удалении вебхука: {e}")
+            print(f"⚠ Ошибка при удалении вебхука: {e}")
+
         # Запускаем поллинг с skip_updates=True
-        await dp.start_polling(bot, on_startup=on_startup, on_shutdown=on_shutdown, skip_updates=True)
+        await dp.start_polling(
+            bot, 
+            on_startup=on_startup, 
+            on_shutdown=on_shutdown, 
+            skip_updates=True,
+            allowed_updates=types.AllowedUpdates.all()
+        )
     except Exception as e:
         logger.critical(f"Ошибка: {e}")
+        print(f"💥 Критическая ошибка: {e}")
         # Попытка автоматического перезапуска
         time.sleep(10)
         os.execv(sys.executable, ['python'] + sys.argv)
