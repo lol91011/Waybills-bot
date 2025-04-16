@@ -1020,7 +1020,6 @@ async def handle_unexpected_messages(message: types.Message):
 async def on_startup(bot: Bot):
     """Действия при запуске бота"""
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
         logger.info("Бот успешно запущен")
         print("🤖 Бот успешно запущен")
         
@@ -1051,11 +1050,7 @@ async def main():
         logger.info("Запуск бота...")
         print("🤖 Бот запускается...")
 
-        # Удаляем вебхук и ждем завершения
-        await bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(1)
-
-        # Запускаем поллинг без указания allowed_updates
+        # Запускаем поллинг
         await dp.start_polling(
             bot,
             on_startup=on_startup,
