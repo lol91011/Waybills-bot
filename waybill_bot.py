@@ -1042,13 +1042,16 @@ async def on_shutdown(bot: Bot):
     except Exception as e:
         logger.error(f"Ошибка при остановке бота: {e}")
 
-# ... (весь предыдущий код остается без изменений до функции main)
 
 async def main():
     """Запуск бота"""
     try:
         logger.info("Запуск бота...")
         print("🤖 Бот запускается...")
+
+        # Явное удаление вебхука перед запуском polling
+        await bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(1)  # Даем время на обработку запроса
 
         # Запускаем поллинг
         await dp.start_polling(
