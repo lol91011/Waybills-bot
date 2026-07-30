@@ -234,7 +234,7 @@ class LocationHelper(private val context: Context) {
 
 object PdfPrinterHelper {
     fun printWaybill(context: Context, state: WaybillUiState) {
-        val htmlContent = buildHtml(state)
+        val htmlContent = buildOfficialForm3Html(state)
         val webView = WebView(context)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -247,68 +247,133 @@ object PdfPrinterHelper {
         webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
     }
 
-    private fun buildHtml(state: WaybillUiState): String {
+    private fun buildOfficialForm3Html(state: WaybillUiState): String {
         val routeRows = state.routePoints.mapIndexed { i, p ->
-            "<tr><td>${i + 1}</td><td style='text-align:left;'>${p.address}</td><td>—</td><td>—</td></tr>"
+            """
+            <tr>
+                <td>${i + 1}</td>
+                <td style="text-align:left;">${p.address}</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+            </tr>
+            """.trimIndent()
         }.joinToString("\n")
 
         return """
-        <!DOCTYPE html><html><head><meta charset="utf-8">
-        <style>
-            body { font-family: 'Times New Roman', serif; font-size: 11pt; margin: 15px; color: #000; }
-            .h { text-align: center; font-weight: bold; font-size: 14pt; margin-bottom: 2px; }
-            .sub { text-align: center; font-size: 10pt; margin-bottom: 12px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            th, td { border: 1px solid black; padding: 4px; text-align: center; font-size: 9pt; }
-            th { background: #f0f0f0; }
-            .info { margin-bottom: 10px; font-size: 10pt; }
-        </style></head><body>
-            <div class="h">ПУТЕВОЙ ЛИСТ ЛЕГКОВОГО АВТОМОБИЛЯ № _____</div>
-            <div class="sub">от ${state.dateString} г. (Типовая форма № 3)</div>
-            
-            <div class="info">
-                <b>Организация / Водитель:</b> ${state.driverName}<br>
-                <b>Марка и госномер ТС:</b> ${state.vehicleModel} (${state.vehiclePlate})
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                @page { size: A4 portrait; margin: 8mm; }
+                body { font-family: 'Times New Roman', serif; font-size: 8.5pt; color: #000; line-height: 1.1; }
+                .top-right { float: right; text-align: right; font-size: 7.5pt; }
+                .okud-table { float: right; border-collapse: collapse; margin-top: 3px; font-size: 7.5pt; }
+                .okud-table td { border: 1px solid #000; padding: 1px 4px; text-align: center; }
+                .clear { clear: both; }
+                .title { text-align: center; font-weight: bold; font-size: 11pt; margin-top: 5px; }
+                .subtitle { text-align: center; font-size: 9pt; margin-bottom: 8px; }
+                table.main-grid { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                table.main-grid th, table.main-grid td { border: 1px solid #000; padding: 2px 3px; text-align: center; font-size: 8pt; }
+                table.main-grid th { background-color: #f2f2f2; font-weight: bold; }
+                .line-field { border-bottom: 1px solid #000; display: inline-block; padding: 0 4px; font-weight: bold; }
+                .section-header { font-weight: bold; font-size: 8.5pt; margin-top: 8px; margin-bottom: 3px; background: #e8e8e8; padding: 2px 4px; border: 1px solid #000; }
+                .sig-block { margin-top: 10px; font-size: 8pt; }
+                .sig-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+            </style>
+        </head>
+        <body>
+            <div class="top-right">
+                Типовая межотраслевая форма № 3<br>
+                Утверждена постановлением Госкомстата России от 28.11.97 № 78
+                <table class="okud-table">
+                    <tr><td>Форма по ОКУД</td><td><b>0345001</b></td></tr>
+                </table>
             </div>
+            <div class="clear"></div>
+            <div class="title">ПУТЕВОЙ ЛИСТ ЛЕГКОВОГО АВТОМОБИЛЯ № _____</div>
+            <div class="subtitle">«<span class="line-field">${state.dateString}</span>» г.</div>
 
-            <table>
+            <table style="width:100%; font-size:8.5pt; margin-bottom:6px;">
                 <tr>
-                    <th>Выезд (км)</th>
-                    <th>Возврат (км)</th>
-                    <th>Пробег (км)</th>
-                    <th>Ост. выезд (л)</th>
-                    <th>Выдано (л)</th>
-                    <th>Расход (л)</th>
-                    <th>Ост. возврат (л)</th>
+                    <td style="width:55%;">Организация: <span class="line-field" style="width:70%;">ООО "ТрансАвто"</span></td>
+                    <td>Марка автомобиля: <span class="line-field" style="width:50%;">${state.vehicleModel}</span></td>
                 </tr>
                 <tr>
-                    <td>${state.startOdometer}</td>
-                    <td>${state.endOdometer}</td>
-                    <td><b>${"%.1f".format(state.calculatedDistance)}</b></td>
-                    <td>${state.fuelAtStart}</td>
-                    <td>${state.fuelRefueled}</td>
-                    <td>${"%.2f".format(state.fuelSpent)}</td>
-                    <td><b>${"%.2f".format(state.fuelAtEnd)}</b></td>
+                    <td>Водитель: <span class="line-field" style="width:75%;">${state.driverName}</span></td>
+                    <td>Государственный знак: <span class="line-field" style="width:40%;">${state.vehiclePlate}</span></td>
                 </tr>
             </table>
 
-            <h4 style="margin-bottom:4px;margin-top:12px;">Маршрут движения</h4>
-            <table>
-                <tr><th style="width:7%;">№</th><th>Адрес / Пункт назначения</th><th style="width:15%;">Выезд</th><th style="width:15%;">Приезд</th></tr>
-                $routeRows
+            <div class="section-header">1. РАБОТА ВОДИТЕЛЯ И АВТОМОБИЛЯ (ПОКАЗАНИЯ СПИДОМЕТРА И ТОПЛИВО)</div>
+            <table class="main-grid">
+                <thead>
+                    <tr>
+                        <th colspan="2">Показания спидометра (км)</th>
+                        <th rowspan="2">Пройдено<br>всего (км)</th>
+                        <th colspan="4">Движение горючего (литры)</th>
+                    </tr>
+                    <tr>
+                        <th>При выезде</th>
+                        <th>При возвращении</th>
+                        <th>Остаток выезд</th>
+                        <th>Выдано (заправка)</th>
+                        <th>Расход по норме</th>
+                        <th>Остаток возврат</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>${state.startOdometer}</td>
+                        <td>${state.endOdometer}</td>
+                        <td><b>${"%.1f".format(state.calculatedDistance)}</b></td>
+                        <td>${state.fuelAtStart}</td>
+                        <td>${state.fuelRefueled}</td>
+                        <td>${"%.2f".format(state.fuelSpent)}</td>
+                        <td><b>${"%.2f".format(state.fuelAtEnd)}</b></td>
+                    </tr>
+                </tbody>
             </table>
-            
-            <br><br>
-            <table style="border:none;">
-                <tr style="border:none;">
-                    <td style="border:none;text-align:left;">Водитель: ____________ / ${state.driverName} /</td>
-                    <td style="border:none;text-align:right;">Диспетчер: ____________</td>
-                </tr>
+
+            <div class="section-header">2. ЗАДАНИЕ ВОДИТЕЛЮ И ДВИЖЕНИЕ ПО МАРШРУТУ</div>
+            <table class="main-grid">
+                <thead>
+                    <tr>
+                        <th style="width:4%;">№</th>
+                        <th style="width:50%;">Место отправления / назначение (маршрут)</th>
+                        <th style="width:11%;">Время выезда</th>
+                        <th style="width:11%;">Время приезда</th>
+                        <th style="width:12%;">Пробег (км)</th>
+                        <th style="width:12%;">Подпись</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $routeRows
+                </tbody>
             </table>
-        </body></html>
+
+            <div class="sig-block">
+                <div class="sig-row">
+                    <div>Автомобиль технически исправен. Выезд разрешен.</div>
+                    <div>Механик: _________________ / ____________ /</div>
+                </div>
+                <div class="sig-row">
+                    <div>Водитель подпись о приеме авто: _________________</div>
+                    <div>Водитель подпись о сдаче авто: _________________</div>
+                </div>
+                <div class="sig-row" style="margin-top:6px;">
+                    <div>Прошел предрейсовый медицинский осмотр:</div>
+                    <div>Медицинский работник: _________________ (Штамп)</div>
+                </div>
+            </div>
+        </body>
+        </html>
         """.trimIndent()
     }
 }
+
 
 // --- 4. MAIN ACTIVITY И COMPOSE UI ---
 
