@@ -2,27 +2,27 @@ package com.example.waybill
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.DatePickerDialog
 import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.os.Bundle
-import android.os.Environment
 import android.print.PrintAttributes
+import android.print.PrintManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,12 +45,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.coroutines.resume
 
-// --- 1. МОДЕЛИ ДАННЫХ И VIEWMODEL ---
+// --- 1. МОДЕЛИ ДАННЫХ И ХРАНИЛИЩЕ ---
 
 enum class DistanceInputMode { ODOMETER, DIRECT_DISTANCE }
 
@@ -60,19 +61,20 @@ data class RoutePointItem(
 )
 
 data class WaybillUiState(
-    val driverName: String = "Иванов И.И.",
-    val vehicleModel: String = "ГАЗель NEXT",
-    val vehiclePlate: String = "А 777 АА 777",
+    val dateString: String = SimpleDateFormat("dd.MM.yyyy", Locale("ru")).format(Date()),
+    val driverName: String = "Барыльченко В.А.",
+    val vehicleModel: String = "Lada Largus",
+    val vehiclePlate: String = "H541ME134",
     val inputMode: DistanceInputMode = DistanceInputMode.ODOMETER,
-    val startOdometer: String = "120000",
-    val endOdometer: String = "120150",
+    val startOdometer: String = "200000",
+    val endOdometer: String = "200150",
     val directDistance: String = "150",
     val fuelAtStart: String = "20.0",
-    val fuelRefueled: String = "30.0",
-    val avgConsumption: String = "12.0",
+    val fuelRefueled: String = "0.0",
+    val avgConsumption: String = "13.78",
     val routePoints: List<RoutePointItem> = listOf(
-        RoutePointItem(address = "г. Москва, ул. Ленина, д. 1"),
-        RoutePointItem(address = "г. Москва, ул. Тверская, д. 10")
+        RoutePointItem(address = "г. Волгоград, Раздольная улица, 1"),
+        RoutePointItem(address = "г. Волгоград, пр. Ленина, 10")
     )
 ) {
     val calculatedDistance: Double
@@ -93,6 +95,10 @@ class WaybillViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(WaybillUiState())
     val uiState: StateFlow<WaybillUiState> = _uiState.asStateFlow()
 
+    private val _history = MutableStateFlow<List<WaybillUiState>>(emptyList())
+    val history: StateFlow<List<WaybillUiState>> = _history.asStateFlow()
+
+    fun updateDate(date: String) = _uiState.update { it.copy(dateString = date) }
     fun updateDriverName(name: String) = _uiState.update { it.copy(driverName = name) }
     fun updateVehicleModel(model: String) = _uiState.update { it.copy(vehicleModel = model) }
     fun updateVehiclePlate(plate: String) = _uiState.update { it.copy(vehiclePlate = plate) }
@@ -116,6 +122,82 @@ class WaybillViewModel : ViewModel() {
 
     fun removeRoutePoint(id: String) {
         _uiState.update { if (it.routePoints.size > 1) it.copy(routePoints = it.routePoints.filterNot { p -> p.id == id }) else it }
+    }
+
+    fun saveToHistory(context: Context) {
+        val current = _uiState.value
+        val newList = _history.value + current
+        _history.value = newList
+        saveHistoryToPrefs(context, newList)
+    }
+
+    fun loadHistory(context: Context) {
+        _history.value = loadHistoryFromPrefs(context)
+    }
+
+    fun deleteHistoryItem(context: Context, index: Int) {
+        val newList = _history.value.toMutableList().apply { removeAt(index) }
+        _history.value = newList
+        saveHistoryToPrefs(context, newList)
+    }
+
+    private fun saveHistoryToPrefs(context: Context, list: List<WaybillUiState>) {
+        val prefs = context.getSharedPreferences("waybill_prefs", Context.MODE_PRIVATE)
+        val array = JSONArray()
+        list.forEach { item ->
+            val obj = JSONObject().apply {
+                put("date", item.dateString)
+                put("driver", item.driverName)
+                put("model", item.vehicleModel)
+                put("plate", item.vehiclePlate)
+                put("startOdo", item.startOdometer)
+                put("endOdo", item.endOdometer)
+                put("distance", item.calculatedDistance)
+                put("fuelStart", item.fuelAtStart)
+                put("fuelRefueled", item.fuelRefueled)
+                put("avgConsumption", item.avgConsumption)
+                put("fuelSpent", item.fuelSpent)
+                put("fuelEnd", item.fuelAtEnd)
+                val pointsArr = JSONArray()
+                item.routePoints.forEach { pointsArr.put(it.address) }
+                put("points", pointsArr)
+            }
+            array.put(obj)
+        }
+        prefs.edit().putString("history_json", array.toString()).apply()
+    }
+
+    private fun loadHistoryFromPrefs(context: Context): List<WaybillUiState> {
+        val prefs = context.getSharedPreferences("waybill_prefs", Context.MODE_PRIVATE)
+        val jsonStr = prefs.getString("history_json", null) ?: return emptyList()
+        val list = mutableListOf<WaybillUiState>()
+        try {
+            val array = JSONArray(jsonStr)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val pointsArr = obj.getJSONArray("points")
+                val pts = mutableListOf<RoutePointItem>()
+                for (j in 0 until pointsArr.length()) {
+                    pts.add(RoutePointItem(address = pointsArr.getString(j)))
+                }
+                list.add(
+                    WaybillUiState(
+                        dateString = obj.optString("date", ""),
+                        driverName = obj.optString("driver", ""),
+                        vehicleModel = obj.optString("model", ""),
+                        vehiclePlate = obj.optString("plate", ""),
+                        startOdometer = obj.optString("startOdo", "0"),
+                        endOdometer = obj.optString("endOdo", "0"),
+                        directDistance = obj.optDouble("distance", 0.0).toString(),
+                        fuelAtStart = obj.optString("fuelStart", "0"),
+                        fuelRefueled = obj.optString("fuelRefueled", "0"),
+                        avgConsumption = obj.optString("avgConsumption", "0"),
+                        routePoints = pts
+                    )
+                )
+            }
+        } catch (e: Exception) { e.printStackTrace() }
+        return list
     }
 }
 
@@ -148,34 +230,81 @@ class LocationHelper(private val context: Context) {
     }
 }
 
-// --- 3. ГЕНЕРАТОР PDF (ФОРМА №3) ---
+// --- 3. ГЕНЕРАТОР PDF И ПЕЧАТЬ ---
 
-object Form3HtmlBuilder {
-    fun buildHtml(state: WaybillUiState): String {
-        val currentDate = SimpleDateFormat("dd.MM.yyyy", Locale("ru")).format(Date())
+object PdfPrinterHelper {
+    fun printWaybill(context: Context, state: WaybillUiState) {
+        val htmlContent = buildHtml(state)
+        val webView = WebView(context)
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                val jobName = "Путевой_лист_${state.dateString}"
+                val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            }
+        }
+        webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+    }
+
+    private fun buildHtml(state: WaybillUiState): String {
         val routeRows = state.routePoints.mapIndexed { i, p ->
-            "<tr><td>${i + 1}</td><td>${p.address}</td><td>—</td><td>—</td></tr>"
+            "<tr><td>${i + 1}</td><td style='text-align:left;'>${p.address}</td><td>—</td><td>—</td></tr>"
         }.joinToString("\n")
 
         return """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <style>
-            body { font-family: sans-serif; font-size: 11pt; margin: 15px; }
-            .h { text-align: center; font-weight: bold; font-size: 13pt; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            body { font-family: 'Times New Roman', serif; font-size: 11pt; margin: 15px; color: #000; }
+            .h { text-align: center; font-weight: bold; font-size: 14pt; margin-bottom: 2px; }
+            .sub { text-align: center; font-size: 10pt; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
             th, td { border: 1px solid black; padding: 4px; text-align: center; font-size: 9pt; }
-            th { background: #eee; }
+            th { background: #f0f0f0; }
+            .info { margin-bottom: 10px; font-size: 10pt; }
         </style></head><body>
             <div class="h">ПУТЕВОЙ ЛИСТ ЛЕГКОВОГО АВТОМОБИЛЯ № _____</div>
-            <div style="text-align:center;font-size:10pt;">от $currentDate г. (Форма № 3)</div>
-            <p><b>Водитель:</b> ${state.driverName}<br><b>Автомобиль:</b> ${state.vehicleModel} (${state.vehiclePlate})</p>
+            <div class="sub">от ${state.dateString} г. (Типовая форма № 3)</div>
+            
+            <div class="info">
+                <b>Организация / Водитель:</b> ${state.driverName}<br>
+                <b>Марка и госномер ТС:</b> ${state.vehicleModel} (${state.vehiclePlate})
+            </div>
+
             <table>
-                <tr><th>Выезд (км)</th><th>Возврат (км)</th><th>Пробег</th><th>Топливо нач.</th><th>Заправка</th><th>Расход</th><th>Топливо кон.</th></tr>
-                <tr><td>${state.startOdometer}</td><td>${state.endOdometer}</td><td><b>${"%.1f".format(state.calculatedDistance)}</b></td>
-                <td>${state.fuelAtStart}</td><td>${state.fuelRefueled}</td><td>${"%.2f".format(state.fuelSpent)}</td><td><b>${"%.2f".format(state.fuelAtEnd)}</b></td></tr>
+                <tr>
+                    <th>Выезд (км)</th>
+                    <th>Возврат (км)</th>
+                    <th>Пробег (км)</th>
+                    <th>Ост. выезд (л)</th>
+                    <th>Выдано (л)</th>
+                    <th>Расход (л)</th>
+                    <th>Ост. возврат (л)</th>
+                </tr>
+                <tr>
+                    <td>${state.startOdometer}</td>
+                    <td>${state.endOdometer}</td>
+                    <td><b>${"%.1f".format(state.calculatedDistance)}</b></td>
+                    <td>${state.fuelAtStart}</td>
+                    <td>${state.fuelRefueled}</td>
+                    <td>${"%.2f".format(state.fuelSpent)}</td>
+                    <td><b>${"%.2f".format(state.fuelAtEnd)}</b></td>
+                </tr>
             </table>
-            <h3>Маршрут движения</h3>
-            <table><tr><th>№</th><th>Адрес / Пункт</th><th>Выезд</th><th>Приезд</th></tr>$routeRows</table>
+
+            <h4 style="margin-bottom:4px;margin-top:12px;">Маршрут движения</h4>
+            <table>
+                <tr><th style="width:7%;">№</th><th>Адрес / Пункт назначения</th><th style="width:15%;">Выезд</th><th style="width:15%;">Приезд</th></tr>
+                $routeRows
+            </table>
+            
+            <br><br>
+            <table style="border:none;">
+                <tr style="border:none;">
+                    <td style="border:none;text-align:left;">Водитель: ____________ / ${state.driverName} /</td>
+                    <td style="border:none;text-align:right;">Диспетчер: ____________</td>
+                </tr>
+            </table>
         </body></html>
         """.trimIndent()
     }
@@ -189,7 +318,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    WaybillScreen()
+                    MainAppScreen()
                 }
             }
         }
@@ -198,7 +327,47 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WaybillScreen(viewModel: WaybillViewModel = viewModel()) {
+fun MainAppScreen(viewModel: WaybillViewModel = viewModel()) {
+    val context = LocalContext.current
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadHistory(context)
+    }
+
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(title = { Text("Путевой лист № 3", fontWeight = FontWeight.Bold) })
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Новый лист") },
+                        icon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("История") },
+                        icon = { Icon(Icons.Default.History, contentDescription = null) }
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        Box(modifier = Modifier.padding(padding)) {
+            if (selectedTab == 0) {
+                WaybillFormScreen(viewModel = viewModel)
+            } else {
+                HistoryScreen(viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun WaybillFormScreen(viewModel: WaybillViewModel) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val locationHelper = remember { LocationHelper(context) }
@@ -208,89 +377,199 @@ fun WaybillScreen(viewModel: WaybillViewModel = viewModel()) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Путевой лист № 3") }) }) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Card {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Водитель и ТС", fontWeight = FontWeight.Bold)
-                        OutlinedTextField(state.driverName, viewModel::updateDriverName, label = { Text("ФИО Водителя") }, modifier = Modifier.fillMaxWidth())
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(state.vehicleModel, viewModel::updateVehicleModel, label = { Text("Марка") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(state.vehiclePlate, viewModel::updateVehiclePlate, label = { Text("Госномер") }, modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
+    // Календарь для выбора даты
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            val formattedDate = "%02d.%02d.%d".format(dayOfMonth, month + 1, year)
+            viewModel.updateDate(formattedDate)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
 
-            item {
-                Card {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Пробег (км)", fontWeight = FontWeight.Bold)
-                        Row {
-                            FilterChip(selected = state.inputMode == DistanceInputMode.ODOMETER, onClick = { viewModel.setInputMode(DistanceInputMode.ODOMETER) }, label = { Text("Одометр") })
-                            Spacer(Modifier.width(8.dp))
-                            FilterChip(selected = state.inputMode == DistanceInputMode.DIRECT_DISTANCE, onClick = { viewModel.setInputMode(DistanceInputMode.DIRECT_DISTANCE) }, label = { Text("Расстояние") })
-                        }
-                        if (state.inputMode == DistanceInputMode.ODOMETER) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(state.startOdometer, viewModel::updateStartOdometer, label = { Text("Выезд") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                                OutlinedTextField(state.endOdometer, viewModel::updateEndOdometer, label = { Text("Возврат") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Дата и Инфо
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Параметры и Водитель", fontWeight = FontWeight.Bold)
+                    
+                    // Поле выбора даты
+                    OutlinedTextField(
+                        value = state.dateString,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Дата путевого листа") },
+                        trailingIcon = {
+                            IconButton(onClick = { datePickerDialog.show() }) {
+                                Icon(Icons.Default.DateRange, contentDescription = "Выбрать дату")
                             }
-                        } else {
-                            OutlinedTextField(state.directDistance, viewModel::updateDirectDistance, label = { Text("Пройдено км") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                        }
-                        Text("Итого пробег: %.1f км".format(state.calculatedDistance), color = MaterialTheme.colorScheme.primary)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { datePickerDialog.show() }
+                    )
+
+                    OutlinedTextField(state.driverName, viewModel::updateDriverName, label = { Text("ФИО Водителя") }, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(state.vehicleModel, viewModel::updateVehicleModel, label = { Text("Марка") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(state.vehiclePlate, viewModel::updateVehiclePlate, label = { Text("Госномер") }, modifier = Modifier.weight(1f))
                     }
                 }
             }
+        }
 
-            item {
-                Card {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Топливо (л)", fontWeight = FontWeight.Bold)
+        // Пробег
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Пробег (км)", fontWeight = FontWeight.Bold)
+                    Row {
+                        FilterChip(
+                            selected = state.inputMode == DistanceInputMode.ODOMETER,
+                            onClick = { viewModel.setInputMode(DistanceInputMode.ODOMETER) },
+                            label = { Text("Одометр") }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FilterChip(
+                            selected = state.inputMode == DistanceInputMode.DIRECT_DISTANCE,
+                            onClick = { viewModel.setInputMode(DistanceInputMode.DIRECT_DISTANCE) },
+                            label = { Text("Расстояние") }
+                        )
+                    }
+                    if (state.inputMode == DistanceInputMode.ODOMETER) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(state.fuelAtStart, viewModel::updateFuelStart, label = { Text("Выезд") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(state.fuelRefueled, viewModel::updateFuelRefueled, label = { Text("Заправка") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                            OutlinedTextField(state.avgConsumption, viewModel::updateAvgConsumption, label = { Text("Норма") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(state.startOdometer, viewModel::updateStartOdometer, label = { Text("Выезд") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                            OutlinedTextField(state.endOdometer, viewModel::updateEndOdometer, label = { Text("Возврат") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                         }
-                        Text("Остаток при возврате: %.2f л".format(state.fuelAtEnd), fontWeight = FontWeight.Bold)
+                    } else {
+                        OutlinedTextField(state.directDistance, viewModel::updateDirectDistance, label = { Text("Пройдено км") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    }
+                    Text("Итого пробег: %.1f км".format(state.calculatedDistance), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // Топливо
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Топливо (л)", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(state.fuelAtStart, viewModel::updateFuelStart, label = { Text("Выезд") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        OutlinedTextField(state.fuelRefueled, viewModel::updateFuelRefueled, label = { Text("Заправка") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                        OutlinedTextField(state.avgConsumption, viewModel::updateAvgConsumption, label = { Text("Норма") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Расход: %.2f л".format(state.fuelSpent))
+                        Text("Ост. возврат: %.2f л".format(state.fuelAtEnd), fontWeight = FontWeight.Bold)
                     }
                 }
             }
+        }
 
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Маршрут", fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { viewModel.addRoutePoint() }) { Icon(Icons.Default.Add, null) }
-                }
+        // Маршрут
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Маршрут движения", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                IconButton(onClick = { viewModel.addRoutePoint() }) { Icon(Icons.Default.Add, null) }
             }
+        }
 
-            itemsIndexed(state.routePoints) { index, point ->
-                OutlinedTextField(
-                    value = point.address,
-                    onValueChange = { viewModel.updateAddress(point.id, it) },
-                    label = { Text("Точка ${index + 1}") },
-                    trailingIcon = {
-                        Row {
-                            IconButton(onClick = {
-                                permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                                scope.launch {
-                                    val addr = locationHelper.getCurrentAddress()
-                                    if (addr != null) viewModel.updateAddress(point.id, addr)
-                                }
-                            }) { Icon(Icons.Default.MyLocation, "GPS") }
-                            if (state.routePoints.size > 1) {
-                                IconButton(onClick = { viewModel.removeRoutePoint(point.id) }) { Icon(Icons.Default.Delete, "Удалить") }
+        itemsIndexed(state.routePoints) { index, point ->
+            OutlinedTextField(
+                value = point.address,
+                onValueChange = { viewModel.updateAddress(point.id, it) },
+                label = { Text("Точка ${index + 1}") },
+                trailingIcon = {
+                    Row {
+                        IconButton(onClick = {
+                            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                            scope.launch {
+                                val addr = locationHelper.getCurrentAddress()
+                                if (addr != null) viewModel.updateAddress(point.id, addr)
                             }
+                        }) { Icon(Icons.Default.MyLocation, "GPS") }
+                        if (state.routePoints.size > 1) {
+                            IconButton(onClick = { viewModel.removeRoutePoint(point.id) }) { Icon(Icons.Default.Delete, "Удалить") }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // КНОПКА СФОРМИРОВАТЬ И СОХРАНИТЬ
+        item {
+            Button(
+                onClick = {
+                    viewModel.saveToHistory(context)
+                    PdfPrinterHelper.printWaybill(context, state)
+                    Toast.makeText(context, "Сохранено в историю!", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Icon(Icons.Default.Print, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Сформировать и печать PDF", fontSize = 16.sp)
             }
         }
     }
 }
+
+@Composable
+fun HistoryScreen(viewModel: WaybillViewModel) {
+    val history by viewModel.history.collectAsState()
+    val context = LocalContext.current
+
+    if (history.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("История путевых листов пуста", color = MaterialTheme.colorScheme.outline)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            itemsIndexed(history) { index, item ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Лист от ${item.dateString}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            IconButton(onClick = { viewModel.deleteHistoryItem(context, index) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        Text("Водитель: ${item.driverName}")
+                        Text("ТС: ${item.vehicleModel} (${item.vehiclePlate})")
+                        Text("Пробег: %.1f км | Расход: %.2f л".format(item.calculatedDistance, item.fuelSpent))
+                        Text("Точек маршрута: ${item.routePoints.size}")
+
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { PdfPrinterHelper.printWaybill(context, item) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Print, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Открыть / Печать PDF")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+      
