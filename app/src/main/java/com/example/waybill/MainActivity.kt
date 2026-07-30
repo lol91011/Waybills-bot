@@ -298,79 +298,79 @@ object PdfPrinterHelper {
 
             <table style="width:100%; font-size:8.5pt; margin-bottom:6px;">
                 <tr>
-                    <td style="width:55%;">Организация: <span class="line-field" style="width:70%;">ООО "ТрансАвто"</span></td>
-                    <td>Марка автомобиля: <span class="line-field" style="width:50%;">${state.vehicleModel}</span></td>
-                </tr>
+object PdfPrinterHelper {
+
+    fun printWaybill(context: Context, state: WaybillUiState) {
+        // 1. Чтение HTML-шаблона из папки assets
+        val rawTemplate = try {
+            context.assets.open("form3_template.html").bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "<html><body><h3>Ошибка чтения шаблона form3_template.html из assets</h3></body></html>"
+        }
+
+        // 2. Формирование строк маршрута для оборотной стороны (8 колонок)
+        val routeRows = if (state.routePoints.size > 1) {
+            // Если введено несколько точек, разбиваем их по парам (Откуда -> Куда)
+            val distPerSegment = state.calculatedDistance / (state.routePoints.size - 1)
+            state.routePoints.zipWithNext().mapIndexed { i, (from, to) ->
+                """
                 <tr>
-                    <td>Водитель: <span class="line-field" style="width:75%;">${state.driverName}</span></td>
-                    <td>Государственный знак: <span class="line-field" style="width:40%;">${state.vehiclePlate}</span></td>
+                    <td>${i + 1}</td>
+                    <td>—</td>
+                    <td style="text-align:left;">${from.address}</td>
+                    <td style="text-align:left;">${to.address}</td>
+                    <td>08:00</td>
+                    <td>17:00</td>
+                    <td>${"%.1f".format(distPerSegment)}</td>
+                    <td></td>
                 </tr>
-            </table>
+                """.trimIndent()
+            }.joinToString("\n")
+        } else {
+            // Запасной вариант для одной точки
+            state.routePoints.mapIndexed { i, p ->
+                """
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>—</td>
+                    <td style="text-align:left;">${p.address}</td>
+                    <td style="text-align:left;">г. Волгоград</td>
+                    <td>08:00</td>
+                    <td>17:00</td>
+                    <td>${"%.1f".format(state.calculatedDistance)}</td>
+                    <td></td>
+                </tr>
+                """.trimIndent()
+            }.joinToString("\n")
+        }
 
-            <div class="section-header">1. РАБОТА ВОДИТЕЛЯ И АВТОМОБИЛЯ (ПОКАЗАНИЯ СПИДОМЕТРА И ТОПЛИВО)</div>
-            <table class="main-grid">
-                <thead>
-                    <tr>
-                        <th colspan="2">Показания спидометра (км)</th>
-                        <th rowspan="2">Пройдено<br>всего (км)</th>
-                        <th colspan="4">Движение горючего (литры)</th>
-                    </tr>
-                    <tr>
-                        <th>При выезде</th>
-                        <th>При возвращении</th>
-                        <th>Остаток выезд</th>
-                        <th>Выдано (заправка)</th>
-                        <th>Расход по норме</th>
-                        <th>Остаток возврат</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>${state.startOdometer}</td>
-                        <td>${state.endOdometer}</td>
-                        <td><b>${"%.1f".format(state.calculatedDistance)}</b></td>
-                        <td>${state.fuelAtStart}</td>
-                        <td>${state.fuelRefueled}</td>
-                        <td>${"%.2f".format(state.fuelSpent)}</td>
-                        <td><b>${"%.2f".format(state.fuelAtEnd)}</b></td>
-                    </tr>
-                </tbody>
-            </table>
+        // 3. Автозамена всех меток шаблона на реальные данные из формы
+        val filledHtml = rawTemplate
+            .replace("{{DATE}}", state.dateString)
+            .replace("{{MODEL}}", state.vehicleModel)
+            .replace("{{PLATE}}", state.vehiclePlate)
+            .replace("{{DRIVER}}", state.driverName)
+            .replace("{{START_ODO}}", state.startOdometer)
+            .replace("{{END_ODO}}", state.endOdometer)
+            .replace("{{DISTANCE}}", "%.1f".format(state.calculatedDistance))
+            .replace("{{FUEL_START}}", state.fuelAtStart)
+            .replace("{{FUEL_REFUELED}}", state.fuelRefueled)
+            .replace("{{FUEL_SPENT}}", "%.2f".format(state.fuelSpent))
+            .replace("{{FUEL_END}}", "%.2f".format(state.fuelAtEnd))
+            .replace("{{ROUTE_ROWS}}", routeRows)
 
-            <div class="section-header">2. ЗАДАНИЕ ВОДИТЕЛЮ И ДВИЖЕНИЕ ПО МАРШРУТУ</div>
-            <table class="main-grid">
-                <thead>
-                    <tr>
-                        <th style="width:4%;">№</th>
-                        <th style="width:50%;">Место отправления / назначение (маршрут)</th>
-                        <th style="width:11%;">Время выезда</th>
-                        <th style="width:11%;">Время приезда</th>
-                        <th style="width:12%;">Пробег (км)</th>
-                        <th style="width:12%;">Подпись</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    $routeRows
-                </tbody>
-            </table>
-
-            <div class="sig-block">
-                <div class="sig-row">
-                    <div>Автомобиль технически исправен. Выезд разрешен.</div>
-                    <div>Механик: _________________ / ____________ /</div>
-                </div>
-                <div class="sig-row">
-                    <div>Водитель подпись о приеме авто: _________________</div>
-                    <div>Водитель подпись о сдаче авто: _________________</div>
-                </div>
-                <div class="sig-row" style="margin-top:6px;">
-                    <div>Прошел предрейсовый медицинский осмотр:</div>
-                    <div>Медицинский работник: _________________ (Штамп)</div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """.trimIndent()
+        // 4. Отправка заполненного HTML в системный печатный движок Android
+        val webView = WebView(context)
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                val jobName = "Путевой_лист_${state.dateString}"
+                val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            }
+        }
+        webView.loadDataWithBaseURL(null, filledHtml, "text/html", "UTF-8", null)
     }
 }
 
