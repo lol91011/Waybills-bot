@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page { size: A4 portrait; margin: 4mm 6mm; }
+        body { font-family: 'Times New Roman', Times, serif; font-size: 7.5pt; color: #000; line-height: 1.1; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        td, th { vertical-align: middle; }
+
+        .border-tbl, .border-tbl th, .border-tbl td { border: 1px solid #000; }
+        .border-tbl th { background-color: #f5f5f5; font-weight: bold; text-align: center; font-size: 6.5pt; padding: 2px 1px; }
+        .border-tbl td { text-align: center; padding: 2px 1px; font-size: 7.5pt; }
+
+        .top-hdr { font-size: 6.5pt; text-align: right; line-height: 1.1; float: right; width: 65%; }
+        .okud-tbl { float: right; width: 120px; border-collapse: collapse; margin-top: 1px; }
+        .okud-tbl td { border: 1px solid #000; font-size: 6.5pt; padding: 1px 3px; text-align: center; }
+
+        .title { text-align: center; font-weight: bold; font-size: 11pt; margin: 2px 0 1px 0; }
+        .subtitle { text-align: center; font-size: 8pt; margin-bottom: 4px; }
+        
+        .u { border-bottom: 1px solid #000; display: inline-block; padding: 0 4px; font-weight: bold; }
+        .d { border-bottom: 1px dotted #000; display: inline-block; padding: 0 4px; font-weight: bold; }
+        
+        .clear { clear: both; }
+        .page-break { page-break-before: always; }
+        
+        .box { border: 1px solid #000; padding: 3px; margin-bottom: 3px; }
+        .sub-desc { font-size: 5.5pt; text-align: center; color: #333; }
+        .lbl { font-size: 7pt; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <!-- ================= 1. ЛИЦЕВАЯ СТОРОНА ================= -->
+    <div style="width: 100%;">
+        <div class="top-hdr">
+            Типовая форма № 3<br>
+            Утверждена постановлением Госкомстата России<br>
+            с учетом изменений приказа №467 от 21.12.2018г.
+            <table class="okud-tbl">
+                <tr><th colspan="2" style="font-size:6.5pt;">Коды</th></tr>
+                <tr><td style="width: 60%;">Форма по ОКУД</td><td><b>0345001</b></td></tr>
+                <tr><td>по ОКПО</td><td><b>22462830</b></td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="clear"></div>
+
+    <div class="title">ПУТЕВОЙ ЛИСТ ЛЕГКОВОГО АВТОМОБИЛЯ</div>
+    <div class="subtitle">
+        Срок действия с «<span class="d">{{DATE}}</span>» 2026 г. по «<span class="d">{{DATE}}</span>» 2026 г. № <span class="u" style="width: 35px;">014</span> серия ______
+    </div>
+
+    <!-- Блок реквизитов организации и ТС -->
+    <table style="margin-bottom: 3px;">
+        <tr>
+            <td style="width: 65%;"><b>Организация:</b> <span class="u" style="width: 82%;">ПАО «Вымпел-Коммуникации»</span></td>
+            <td><b>Гаражный номер:</b> <span class="u" style="width: 40px;">—</span></td>
+        </tr>
+        <tr>
+            <td class="sub-desc" style="text-align: left; padding-left: 55px;">наименование, адрес, номер телефона</td>
+            <td><b>Табельный номер:</b> <span class="u" style="width: 40px;">—</span></td>
+        </tr>
+        <tr>
+            <td><b>Марка автомобиля:</b> <span class="u" style="width: 45%;">{{MODEL}}</span></td>
+            <td><b>Гос. номер:</b> <span class="u" style="width: 60px;">{{PLATE}}</span></td>
+        </tr>
+        <tr>
+            <td><b>Водитель:</b> <span class="u" style="width: 82%;">{{DRIVER}}</span></td>
+            <td><b>Удостоверение №:</b> <span class="u" style="width: 50px;">—</span> <b>Класс:</b> <span class="u" style="width: 20px;">—</span></td>
+        </tr>
+        <tr>
+            <td class="sub-desc" style="text-align: left; padding-left: 45px;">фамилия, имя, отчество</td>
+            <td></td>
+        </tr>
+    </table>
+
+    <!-- Задание водителю -->
+    <div class="box">
+        <div class="lbl">Задание водителю</div>
+        <table style="margin-top: 1px;">
+            <tr>
+                <td style="width: 50%;"><b>В распоряжение:</b> <span class="u" style="width: 70%;">ПАО «Вымпелком» (Тех Служба)</span></td>
+                <td><b>Адрес подачи:</b> <span class="u" style="width: 65%;">Г.Волгоград ул Рокоссовского 62</span></td>
+            </tr>
+            <tr>
+                <td class="sub-desc">наименование</td>
+                <td></td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Предрейсовый контроль ТС -->
+    <div class="box">
+        <div class="lbl">Предрейсовый (предсменный) контроль технического состояния транспортного средства пройден</div>
+        <div style="margin-top: 2px;">
+            2026 г. 08 ч. 00 мин.
+        </div>
+        <div style="margin-top: 2px; display: flex; justify-content: space-between;">
+            <div>Выезд разрешен. Контролер тех. состояния ТС: ____________ / <b>Пономарев Е.Ю.</b> /</div>
+            <div>Диспетчер-нарядчик: ____________ / <b>Пономарев Е.</b> /</div>
+        </div>
+    </div>
+
+    <!-- Показания одометра и время -->
+    <table class="border-tbl" style="margin-bottom: 4px;">
+        <thead>
+            <tr>
+                <th style="width: 28%;">Дата; время выезда из гаража, ч, мин.</th>
+                <th style="width: 22%;">Показание одометра</th>
+                <th style="width: 28%;">Время возвращения в гараж, ч, мин.</th>
+                <th style="width: 22%;">Показание одометра при возвращении</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{DATE}} 08:00</td>
+                <td>{{START_ODO}} км</td>
+                <td>17:00</td>
+                <td>{{END_ODO}} км</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Горючее -->
+    <div style="font-weight: bold; margin-bottom: 2px;">
+        Горючее: марка <span class="u">Аи-95</span> | код <span class="u">100300953</span>
+    </div>
+    <table class="border-tbl" style="margin-bottom: 4px;">
+        <thead>
+            <tr>
+                <th rowspan="2">Выдано по заправочному листу №</th>
+                <th colspan="2">Остаток, л</th>
+                <th colspan="2">Расход, л</th>
+                <th rowspan="2">Экономия, л</th>
+                <th rowspan="2">Перерасход, л</th>
+            </tr>
+            <tr>
+                <th>при выезде</th>
+                <th>при возвращении</th>
+                <th>по норме</th>
+                <th>фактический</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{FUEL_REFUELED}}</td>
+                <td>{{FUEL_START}}</td>
+                <td><b>{{FUEL_END}}</b></td>
+                <td><b>{{FUEL_SPENT}}</b></td>
+                <td>{{FUEL_SPENT}}</td>
+                <td>0.0</td>
+                <td>0.0</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Предрейсовый медосмотр и Подписи сдачи -->
+    <table style="margin-top: 2px;">
+        <tr>
+            <td style="width: 48%; border: 1px dashed #000; padding: 3px; vertical-align: top;">
+                <b>Предрейсовый осмотр пройден:</b><br>
+                Дата: {{DATE}} время: 07:45<br>
+                Подпись медработника: ____________ / _____________ /
+            </td>
+            <td style="border: 1px dashed #000; padding: 3px; vertical-align: top; font-size: 7pt;">
+                Автомобиль в технически исправном состоянии принял.<br>
+                Водитель: ____________ / <b>{{DRIVER}}</b> /<br>
+                Автомобиль сдал. Показание одометра: {{END_ODO}} км.<br>
+                Механик: ____________ / <b>Пономарев Е.Ю.</b> /<br>
+                Водитель: ____________ / <b>{{DRIVER}}</b> /
+            </td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 3px; font-size: 6.5pt;">
+        Опоздания, ожидания, простои в пути, заезды в гараж и прочие отметки: ____________________________________________________<br>
+        Диспетчер-нарядчик: ____________ / <b>Пономарев Е.</b> /
+    </div>
+
+
+    <!-- ================= 2. ОБОРОТНАЯ СТОРОНА ================= -->
+    <div class="page-break"></div>
+    <div class="title" style="font-size: 9.5pt; margin-top: 2px;">Оборотная сторона формы № 3</div>
+
+    <table class="border-tbl" style="margin-top: 4px;">
+        <thead>
+            <tr>
+                <th style="width: 4%;">№ по пор.</th>
+                <th style="width: 9%;">Код заказчика</th>
+                <th style="width: 25%;">Место отправления</th>
+                <th style="width: 25%;">Место назначения</th>
+                <th style="width: 9%;">Время выезда (ч, мин)</th>
+                <th style="width: 9%;">Время возвращения (ч, мин)</th>
+                <th style="width: 8%;">Пройдено, км</th>
+                <th style="width: 11%;">Подпись лица, пользовавшегося авто</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ROUTE_ROWS}}
+        </tbody>
+    </table>
+
+    <!-- Итоги и Расчет зарплаты -->
+    <table style="margin-top: 8px; font-size: 7.5pt;">
+        <tr>
+            <td style="width: 48%; vertical-align: top;">
+                <fieldset style="border: 1px solid #000; padding: 4px;">
+                    <legend style="font-weight: bold;">Результат работы автомобиля за смену:</legend>
+                    всего в наряде, ч: <b>8.0</b><br>
+                    пройдено, км: <b>{{DISTANCE}}</b>
+                </fieldset>
+            </td>
+            <td style="vertical-align: top;">
+                <fieldset style="border: 1px solid #000; padding: 4px;">
+                    <legend style="font-weight: bold;">Расчет заработной платы:</legend>
+                    за километраж, руб. коп. : _____________<br>
+                    за часы, руб. коп. : _____________<br>
+                    Итого, руб. коп. : _____________
+                </fieldset>
+            </td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 8px; font-size: 7.5pt;">
+        Расчет произвел: диспетчер-нарядчик ____________ / <b>Пономарев Е.Ю.</b> /
+    </div>
+
+</body>
+</html>
